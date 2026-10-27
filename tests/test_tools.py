@@ -622,7 +622,8 @@ async def test_search_files_blocks_recursive_search_from_user_home(tmp_path, mon
 
     assert result.success is False
     assert result.error.startswith("BROAD_HOME_SEARCH_BLOCKED:")
-    assert "Choose a specific likely directory such as ~/Downloads or ~/Documents" in result.error
+    assert "Use the project directory or the location named by the user" in result.error
+    assert "Do not retry the same scope with another tool" in result.error
     assert result.permission_request is None
 
 

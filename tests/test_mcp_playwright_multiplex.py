@@ -473,10 +473,14 @@ _FAKE_PLAYWRIGHT_SERVER = textwrap.dedent(
     port = int(args[args.index("--port") + 1])
     host = args[args.index("--host") + 1]
     mcp = FastMCP("fake-playwright", host=host, port=port, log_level="WARNING")
+    # Retain observed sessions for this finite test server: after LRU eviction,
+    # Python may otherwise reuse a collected session's id for the next one.
+    observed_sessions = {}
 
     @mcp.tool()
     async def browser_navigate(url: str, ctx: Context) -> str:
         \"\"\"Navigate; echoes which server-side session handled the call.\"\"\"
+        observed_sessions[id(ctx.session)] = ctx.session
         return f"ctx={id(ctx.session)} url={url}"
 
     @mcp.tool()

@@ -81,7 +81,8 @@ class WebExtractTool(Tool):
             "Fetch and extract text from one public web page URL. Pages up to "
             "5,000 characters are returned directly; longer pages are summarized "
             "with the current LLM, or with the optional requested model. This uses "
-            "direct HTTP fetching and does not execute JavaScript."
+            "direct HTTP fetching and does not execute JavaScript, open a visible "
+            "browser, or interact with page controls."
         )
 
     @property
