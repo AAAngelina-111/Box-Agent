@@ -23,11 +23,13 @@ import pytest
 from box_agent.tools import mcp_loader
 from box_agent.tools.browser_runtime_scope import (
     BrowserRuntimeCoordinator,
+    reset_browser_host_binding,
     release_browser_runtime,
     reset_browser_runtime_owner,
     reset_browser_session_key,
     set_browser_runtime_owner,
     set_browser_session_key,
+    set_browser_host_binding,
 )
 from box_agent.tools.mcp_loader import (
     ManagedHttpServerProcess,
@@ -199,6 +201,78 @@ def _make_tool(lease, remote_name="browser_navigate", timeout=1.0):
 def test_mcp_tool_requires_session_or_lease():
     with pytest.raises(ValueError):
         MCPTool(name="x", description="", parameters={}, session=None, server_name="s")
+
+
+@pytest.mark.parametrize("leased", [False, True])
+@pytest.mark.parametrize("binding", [None, "trusted-turn"])
+async def test_browser_binding_is_host_owned_transport_metadata(leased, binding):
+    session = _RecordingSession("ok")
+
+    @asynccontextmanager
+    async def lease():
+        yield session
+
+    tool = _make_tool(lease) if leased else MCPTool(
+        name="managed_browser_navigate", remote_name="browser_navigate",
+        description="", parameters={}, session=session, server_name="playwright",
+    )
+    arguments = {"url": "https://example.com", "_meta": {
+        "box_agent_browser_binding": "model-forged", "json": True,
+    }}
+    token = set_browser_host_binding(binding)
+    try:
+        result = await tool.execute(**arguments)
+    finally:
+        reset_browser_host_binding(token)
+    assert result.success
+    expected_meta = {"json": True}
+    if binding:
+        expected_meta["box_agent_browser_binding"] = binding
+    assert session.calls == [("browser_navigate", {
+        "url": "https://example.com", "_meta": expected_meta,
+    })]
+    assert arguments["_meta"]["box_agent_browser_binding"] == "model-forged"
+    assert "trusted-turn" not in result.content
+
+
+async def test_browser_binding_is_not_sent_to_other_mcp_servers():
+    session = _RecordingSession("ok")
+    tool = MCPTool(
+        name="echo", description="", parameters={}, session=session, server_name="other",
+    )
+    token = set_browser_host_binding("private")
+    try:
+        assert (await tool.execute(text="hello")).success
+    finally:
+        reset_browser_host_binding(token)
+    assert session.calls == [("echo", {"text": "hello"})]
+
+
+async def test_browser_close_cannot_close_tabs_before_host_binding_validation():
+    class ExpiredBindingSession(_RecordingSession):
+        tabs_closed = 0
+
+        async def call_tool(self, name, arguments):
+            self.calls.append((name, dict(arguments)))
+            if arguments.get("_meta", {}).get("box_agent_browser_binding") == "expired":
+                return SimpleNamespace(content=[SimpleNamespace(text="binding expired")], isError=True)
+            self.tabs_closed += 1
+            return SimpleNamespace(content=[], isError=False)
+
+    session = ExpiredBindingSession("ctx")
+
+    @asynccontextmanager
+    async def lease():
+        yield session
+
+    token = set_browser_host_binding("expired")
+    try:
+        result = await _make_tool(lease, "browser_close").execute()
+    finally:
+        reset_browser_host_binding(token)
+    assert not result.success
+    assert session.tabs_closed == 0
+    assert [name for name, _ in session.calls] == ["browser_tabs", "browser_close"]
 
 
 async def test_leased_playwright_tool_skips_cross_turn_lease_and_routes_per_key():

@@ -61,6 +61,7 @@ from box_agent.config import MCPConfig
 from .base import Tool, ToolInvocationContext, ToolResult
 from .browser_runtime_scope import (
     acquire_browser_runtime_for_current_turn,
+    current_browser_host_binding,
     release_browser_runtime_for_current_turn,
 )
 from .browser_tool_names import (
@@ -1102,6 +1103,19 @@ class MCPTool(Tool):
                     concurrency_slot_acquired = True
                     waiting_for_concurrency_slot = False
                 call_arguments = {**kwargs, **self._fixed_arguments}
+                if self._server_name == PLAYWRIGHT_SERVER_NAME:
+                    # Only the host can supply this capability. Keep it off the
+                    # model-visible tool schema, arguments, and session log.
+                    raw_meta = call_arguments.get("_meta")
+                    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+                    meta.pop("box_agent_browser_binding", None)
+                    binding = current_browser_host_binding()
+                    if binding is not None:
+                        meta["box_agent_browser_binding"] = binding
+                    if meta:
+                        call_arguments["_meta"] = meta
+                    else:
+                        call_arguments.pop("_meta", None)
                 if self._is_hosted_web_search:
                     call_arguments = {
                         _hosted_web_search_wire_name(local_name): call_arguments[local_name]
@@ -1129,7 +1143,9 @@ class MCPTool(Tool):
                             # its windows) alive while other clients share the
                             # browser; close our tabs first so "close" is real.
                             try:
-                                await close_all_tabs(leased_session)
+                                await close_all_tabs(
+                                    leased_session, metadata=call_arguments.get("_meta")
+                                )
                             except Exception as tab_error:  # noqa: BLE001
                                 _warn(f"[browser] tab cleanup before close skipped: {tab_error}")
                         result = await leased_session.call_tool(

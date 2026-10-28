@@ -8773,20 +8773,24 @@ async def test_acp_streams_short_model_preface_before_tool(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_acp_prompt_binds_browser_session_key_to_session_id(tmp_path, monkeypatch):
+@pytest.mark.parametrize("binding", [None, "host-turn-capability"])
+async def test_acp_prompt_binds_browser_session_key_to_session_id(tmp_path, monkeypatch, binding):
     """Every Playwright call inside a turn resolves to the ACP session's own client."""
-    from box_agent.tools.browser_runtime_scope import current_browser_session_key
+    from box_agent.tools.browser_runtime_scope import (
+        current_browser_host_binding,
+        current_browser_session_key,
+    )
 
     config = Config(
         llm=LLMConfig(api_key="test-key"),
         agent=AgentConfig(max_steps=1, workspace_dir=str(tmp_path)),
         tools=ToolsConfig(enable_sub_agent=False, enable_mcp=False, enable_skills=False),
     )
-    observed: list[str | None] = []
+    observed = []
     real_loop = runtime_module._run_agent_loop
 
     def observing_loop(**kwargs):
-        observed.append(current_browser_session_key())
+        observed.append((current_browser_session_key(), current_browser_host_binding()))
         return real_loop(**kwargs)
 
     monkeypatch.setattr(runtime_module, "_run_agent_loop", observing_loop)
@@ -8797,11 +8801,15 @@ async def test_acp_prompt_binds_browser_session_key_to_session_id(tmp_path, monk
 
     assert current_browser_session_key() is None
     await agent.prompt(
-        SimpleNamespace(sessionId=session.sessionId, prompt=[{"text": "hello"}])
+        SimpleNamespace(
+            sessionId=session.sessionId, prompt=[{"text": "hello"}],
+            field_meta={"browser_host_binding": binding},
+        )
     )
 
-    assert observed == [session.sessionId]
+    assert observed == [(session.sessionId, binding)]
     assert current_browser_session_key() is None  # reset after the turn
+    assert current_browser_host_binding() is None
 
 
 @pytest.mark.asyncio
