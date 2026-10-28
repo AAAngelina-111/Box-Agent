@@ -51,20 +51,29 @@ _TAB_CLEANUP_TIMEOUT = 15.0
 _WARM_UP_TIMEOUT = 60.0  # first call may launch Chromium
 
 
-async def close_all_tabs(session: Any, *, timeout: float = _TAB_CLEANUP_TIMEOUT) -> int:
+async def close_all_tabs(
+    session: Any,
+    *,
+    timeout: float = _TAB_CLEANUP_TIMEOUT,
+    metadata: dict[str, Any] | None = None,
+) -> int:
     """Close the calling client's tabs one by one via ``browser_tabs``.
 
     Upstream never calls ``BrowserContext.close()`` for a client while other
     clients share the browser, and ``Context.dispose`` does not close pages, so
     ``browser_close`` / disconnect would otherwise leave orphan windows. Stops
     at the first ``isError`` (no tab left). Returns the number of tabs closed.
+    Explicit user calls carry their host metadata; lifecycle cleanup omits it.
     """
     closed = 0
 
     async def _close_until_empty() -> None:
         nonlocal closed
         for _ in range(_MAX_TABS_TO_CLOSE):
-            result = await session.call_tool("browser_tabs", arguments={"action": "close"})
+            arguments: dict[str, Any] = {"action": "close"}
+            if metadata:
+                arguments["_meta"] = dict(metadata)
+            result = await session.call_tool("browser_tabs", arguments=arguments)
             if getattr(result, "isError", False):
                 break
             closed += 1

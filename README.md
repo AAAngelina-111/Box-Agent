@@ -402,6 +402,22 @@ Requires Node.js ≥ 18 on `PATH`. Chromium lands in `~/.box-agent/browsers/` (s
 
 **ACP embedders**: no env-var plumbing required — `box-agent-acp` defaults `PLAYWRIGHT_BROWSERS_PATH` to the same `~/.box-agent/browsers/` path. To point at a different cache, export `PLAYWRIGHT_BROWSERS_PATH=<your path>` before spawning `box-agent-acp` (our setdefault won't override it).
 
+**Web access routing** is shared by CLI, ACP and child agents through the
+capability-gated `Web Access Routing` prompt. Explicit browser/tab/reader choices
+come first, followed by continuation of an existing page, dependencies on the
+user's browser state, independent visible/interactive browser work, and public
+URL body retrieval. Source discovery uses search before choosing a reader.
+For example, “open Baidu” uses the managed browser, while “summarize this public
+article URL” prefers `web_extract`. A request to review a new form does not itself
+require the user's system browser; stop before submission when the user owns it.
+
+Skills provide execution and evidence procedures for the selected channel.
+Unavailable tools must be discovered or reported, never invented. Recovery may
+select another channel only when it preserves the task and does not replace an
+explicit target or required browser state; uncertain actions must be verified
+before any retry. This is a shared model-facing policy, not an unconditional
+Fetch-to-managed-to-user-browser fallback or a guarantee of model compliance.
+
 In-session commands: `/help`, `/clear`, `/clear_all`, `/history`, `/stats`, `/sandbox_status`, `/log`, `/goal`, `/memory review`, `/exit`
 
 CLI Skill subprocesses receive the original user requests, including constraints

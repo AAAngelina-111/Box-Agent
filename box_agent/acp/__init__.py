@@ -137,8 +137,10 @@ from box_agent.tools.skillhub_install_tool import (
 from box_agent.tools.mcp_loader import close_browser_session
 from box_agent.tools.browser_runtime_scope import (
     release_browser_runtime,
+    reset_browser_host_binding,
     reset_browser_runtime_owner,
     reset_browser_session_key,
+    set_browser_host_binding,
     set_browser_runtime_owner,
     set_browser_session_key,
 )
@@ -3217,6 +3219,9 @@ class BoxACPAgent:
         # this turn (including nested sub-agent runs after they rebind the key)
         # starts from the MCP client owned by this session.
         browser_session_token = set_browser_session_key(session_id)
+        browser_host_token = set_browser_host_binding(
+            _meta_string(prompt_meta, "browser_host_binding") or None
+        )
         auto_enabled = (
             state.config.agent.goal_autopilot_enabled
             and state.config.agent.goal_autopilot_max_turns > 0
@@ -3375,6 +3380,7 @@ class BoxACPAgent:
             finally:
                 reset_browser_runtime_owner(browser_owner_token)
                 reset_browser_session_key(browser_session_token)
+                reset_browser_host_binding(browser_host_token)
             turn_meter = get_token_meter()
             reset_token_meter(meter_token)
         waiting_for_user = stop_reason == StopReason.WAITING_FOR_USER.value

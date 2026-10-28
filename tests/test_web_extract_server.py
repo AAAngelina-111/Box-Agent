@@ -19,6 +19,8 @@ async def test_advertised_parameters_have_explicit_types_in_both_provider_format
     assert len(listed) == 1
     tool = listed[0]
     assert tool.name == "web_extract"
+    assert tool.description == web_extract_server.WebExtractTool(llm=None).description
+    assert "open a visible browser" in tool.description
     wrapper = MCPTool(
         name=tool.name,
         description=tool.description or "",
