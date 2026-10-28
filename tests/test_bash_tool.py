@@ -1548,6 +1548,91 @@ async def test_reserved_scratch_subdirectory_can_be_removed_without_approval(tmp
     assert not preview.exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell executable fixture")
+@pytest.mark.asyncio
+async def test_literal_executable_path_runs_repeatedly_without_safety_approval(tmp_path):
+    executable = tmp_path / "浏览器 Chrome for Testing"
+    executable.write_text("#!/bin/sh\nprintf 'rendered\\n'\n", encoding="utf-8")
+    executable.chmod(0o755)
+    command = (
+        f"cd {shlex.quote(str(tmp_path))} && CH={shlex.quote(str(executable))} "
+        '&& "$CH" --headless --screenshot=shot.png'
+    )
+    tool = BashTool(workspace_dir=str(tmp_path), non_interactive=True)
+
+    for _ in range(2):
+        result = await tool.execute(command=command)
+        assert result.success, result.error
+        assert result.stdout.strip() == "rendered"
+        assert result.permission_request is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell syntax")
+@pytest.mark.asyncio
+async def test_ambiguous_dynamic_command_approval_remains_one_shot(tmp_path):
+    tool = BashTool(workspace_dir=str(tmp_path), non_interactive=True)
+    command = 'TOOL=echo; "$TOOL" hello'
+
+    first = await tool.execute(command=command)
+    assert first.permission_request is not None
+    tool.approve_permission_request(first.permission_request)
+    approved = await tool.execute(command=command)
+    assert approved.success, approved.error
+    assert approved.stdout.strip() == "hello"
+    repeated = await tool.execute(command=command)
+    assert repeated.permission_request is not None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell syntax")
+@pytest.mark.asyncio
+async def test_literal_path_to_dangerous_program_still_requires_approval(tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep", encoding="utf-8")
+    tool = BashTool(workspace_dir=str(tmp_path), non_interactive=True)
+
+    result = await tool.execute(command='TOOL=/bin/rm && "$TOOL" victim.txt')
+
+    assert result.permission_request is not None
+    assert victim.read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell syntax")
+@pytest.mark.asyncio
+async def test_literal_executable_path_still_checks_outside_workspace(tmp_path):
+    from box_agent.tools.permissions import CapabilityPolicy, GrantStore, PermissionEngine
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    executable = workspace / "reader"
+    executable.write_text('#!/bin/sh\ncat "$1"\n', encoding="utf-8")
+    executable.chmod(0o755)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("private", encoding="utf-8")
+    engine = PermissionEngine(
+        CapabilityPolicy(
+            filesystem_scope="session_workspace",
+            session_workspace_root=str(workspace),
+        ),
+        workspace,
+        grant_store=GrantStore(),
+    )
+    engine._home_dir = tmp_path.resolve()
+    tool = BashTool(
+        workspace_dir=str(workspace),
+        allow_full_access=False,
+        permission_engine=engine,
+        non_interactive=True,
+    )
+
+    result = await tool.execute(
+        command=f'TOOL={shlex.quote(str(executable))} && "$TOOL" {shlex.quote(str(outside))}'
+    )
+
+    assert result.permission_request is not None
+    assert result.permission_request["scope"] == "filesystem"
+    assert "private" not in result.stdout
+
+
 @pytest.mark.asyncio
 async def test_verified_runtime_node_reference_uses_shell_permission_policy(tmp_path):
     node_path = tmp_path / "node"
