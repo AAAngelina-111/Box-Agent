@@ -300,8 +300,9 @@ HOSTED_WEB_SEARCH_PARAMETERS: dict[str, Any] = {
                 "Omit this field for no time filter."
             ),
             "anyOf": [
-                {"enum": ["OneDay", "OneWeek", "OneMonth", "OneYear"]},
+                {"type": "string", "enum": ["OneDay", "OneWeek", "OneMonth", "OneYear"]},
                 {
+                    "type": "string",
                     "pattern": (
                         r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\.\."
                         r"[0-9]{4}-[0-9]{2}-[0-9]{2}$"
